@@ -142,8 +142,9 @@ Eigen::Matrix4d ICP(PointCloudT::Ptr target, PointCloudT::Ptr source, Pose start
         return transformation_matrix;
     }
     else
+      	// when ICP is not converging, using initTransform as estimation
         cout << "WARNING: ICP did not converge" << endl;
-    return transformation_matrix;
+    return initTransform;
 }
 
 Eigen::Matrix4d NDT(pcl::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ> ndt, PointCloudT::Ptr source, Pose startingPose, int iterations){
@@ -162,18 +163,20 @@ Eigen::Matrix4d NDT(pcl::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointX
     Eigen::Matrix4d transformation_matrix = ndt.getFinalTransformation ().cast<double>();
 
     return transformation_matrix;
-  	
-  	
-  
-  
 }
 
 
 int main(){
 	
   	// enable alignment algorithm
-  	bool icp_flag = false;
-  	int iter = 10;
+  	bool icp_flag = true;
+  	int iter = 40;
+  
+  	// create voxel filter object and setting filter parameters
+  	double filterRes = 0.25;
+  	pcl::VoxelGrid<PointT> vg;
+	vg.setLeafSize(filterRes, filterRes, filterRes);
+  	
   	
 	auto client = cc::Client("localhost", 2000);
 	client.SetTimeout(2s);
@@ -190,7 +193,7 @@ int main(){
 	auto lidar_bp = *(blueprint_library->Find("sensor.lidar.ray_cast"));
 	// CANDO: Can modify lidar values to get different scan resolutions
 	lidar_bp.SetAttribute("upper_fov", "15");
-    lidar_bp.SetAttribute("lower_fov", "-25");
+    lidar_bp.SetAttribute("lower_fov", "-10");
     lidar_bp.SetAttribute("channels", "32");
     lidar_bp.SetAttribute("range", "30");
 	lidar_bp.SetAttribute("rotation_frequency", "60");
@@ -290,10 +293,7 @@ int main(){
           	// set input scan in vg
           	// set filter resolution in vg
           	// run filter and store results in cloudFiltered
-          	pcl::VoxelGrid<PointT> vg;
 			vg.setInputCloud(scanCloud);
-			double filterRes = 0.5;
-			vg.setLeafSize(filterRes, filterRes, filterRes);
 			vg.filter(*cloudFiltered);
 			
 			// TODO: Find pose transform by using ICP or NDT matching
