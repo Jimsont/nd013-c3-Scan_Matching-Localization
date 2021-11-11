@@ -119,14 +119,14 @@ Eigen::Matrix4d ICP(PointCloudT::Ptr target, PointCloudT::Ptr source, Pose start
   	// for list of parameters in PCL icp algorithm, check "http://docs.ros.org/en/hydro/api/pcl/html/classpcl_1_1IterativeClosestPoint.html"
     pcl::IterativeClosestPoint<PointT, PointT> icp;
     icp.setMaximumIterations(iterations);
-	icp.setMaxCorrespondenceDistance(2);
+	icp.setMaxCorrespondenceDistance(2.0);
   
   	// set source pcl and target pcl
     icp.setInputSource(transformSource);
     icp.setInputTarget(target);
     
-    //icp.setTransformationEpsilon(0.001);
-    //icp.setEuclideanFitnessEpsilon(.05);
+//     icp.setTransformationEpsilon(0.001);
+//     icp.setEuclideanFitnessEpsilon(.05);
     //icp.setRANSACOutlierRejectionThreshold (10);
 
   	// create cloud_icp to store ICP output point cloud
@@ -152,12 +152,14 @@ Eigen::Matrix4d NDT(pcl::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointX
   	// set NDT iteration numbers
   	// set NDT source pcl
   	Eigen::Matrix4f init_guess = transform3D(startingPose.rotation.yaw, startingPose.rotation.pitch, startingPose.rotation.roll, startingPose.position.x, startingPose.position.y, startingPose.position.z).cast<float>();
-  	ndt.setMaximumIterations(iterations);
     ndt.setInputSource(source);
   
   	// create cloud_ndt to store NDT point cloud results
   	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_ndt (new pcl::PointCloud<pcl::PointXYZ>);
     ndt.align(*cloud_ndt, init_guess);
+  	
+  	// Setting max iteration
+  	ndt.setMaximumIterations(iterations);
 
 	// get transformation matrix
     Eigen::Matrix4d transformation_matrix = ndt.getFinalTransformation ().cast<double>();
@@ -167,16 +169,9 @@ Eigen::Matrix4d NDT(pcl::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointX
 
 
 int main(){
-	
-  	// enable alignment algorithm
-  	bool icp_flag = true;
-  	int iter = 40;
   
-  	// create voxel filter object and setting filter parameters
-  	double filterRes = 0.25;
-  	pcl::VoxelGrid<PointT> vg;
-	vg.setLeafSize(filterRes, filterRes, filterRes);
-  	
+	// switch alignment algorithm
+  	bool icp_flag = true;  	
   	
 	auto client = cc::Client("localhost", 2000);
 	client.SetTimeout(2s);
@@ -193,7 +188,7 @@ int main(){
 	auto lidar_bp = *(blueprint_library->Find("sensor.lidar.ray_cast"));
 	// CANDO: Can modify lidar values to get different scan resolutions
 	lidar_bp.SetAttribute("upper_fov", "15");
-    lidar_bp.SetAttribute("lower_fov", "-10");
+    lidar_bp.SetAttribute("lower_fov", "-25");
     lidar_bp.SetAttribute("channels", "32");
     lidar_bp.SetAttribute("range", "30");
 	lidar_bp.SetAttribute("rotation_frequency", "60");
@@ -245,12 +240,13 @@ int main(){
   	// create ndt algorithm object
   	pcl::NormalDistributionsTransform<pcl::PointXYZ, pcl::PointXYZ> ndt;
     // Setting minimum transformation difference for termination condition.
-    ndt.setTransformationEpsilon(.0001);
+    ndt.setTransformationEpsilon(.001);
     // Setting maximum step size for More-Thuente line search.
-    ndt.setStepSize(1);
+    ndt.setStepSize(1.0);
     //Setting Resolution of NDT grid structure (VoxelGridCovariance).
-    ndt.setResolution(1);
+    ndt.setResolution(3.0);
     ndt.setInputTarget(mapCloud);
+  	
   
   	
 	while (!viewer->wasStopped())
@@ -293,6 +289,9 @@ int main(){
           	// set input scan in vg
           	// set filter resolution in vg
           	// run filter and store results in cloudFiltered
+          	pcl::VoxelGrid<PointT> vg;
+          	float res = 1.0;
+          	vg.setLeafSize(res, res, res);
 			vg.setInputCloud(scanCloud);
 			vg.filter(*cloudFiltered);
 			
@@ -300,13 +299,15 @@ int main(){
 			//pose = ....
         	// create transform_matrix to store ICP or NDT results
           	// get pose from identified transform_matrix
-          	Eigen::Matrix4d transform_matrix;
+          	Eigen::Matrix4d transform_matrix = Eigen::Matrix4d::Identity();
           	if (icp_flag == true)
             {
+  				int iter = 10;
               	transform_matrix = ICP(mapCloud, cloudFiltered, pose, iter);
             }
           	else
             {
+              	int iter = 10;
               	transform_matrix = NDT(ndt, cloudFiltered, pose, iter);
             }
           	pose = getPose(transform_matrix);
